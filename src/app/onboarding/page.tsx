@@ -66,7 +66,6 @@ const MUSCLE_GROUPS: MuscleGroup[] = [
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const supabase = createClient();
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [data, setData] = useState<OnboardingData>({
@@ -114,6 +113,7 @@ export default function OnboardingPage() {
   async function handleFinish() {
     setSaving(true);
     try {
+      const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
