@@ -246,13 +246,24 @@ function getSplitPlan(days: number): {
 
 // ─── EXERCISE SELECTION ───────────────────────────────────────────────────────
 
+// Tag-based target expressions map user-requested tags to exercises
+const TAG_BOOSTERS: Record<string, string[]> = {
+  "inner thighs":  ["adductors", "inner thighs", "wide stance"],
+  "outer glutes":  ["abductors", "outer glutes"],
+  "glutes":        ["glute-dominant", "posterior chain"],
+  "hamstrings":    ["hamstring-dominant", "posterior chain"],
+  "quads":         ["quad-dominant", "knee-dominant"],
+  "posterior chain": ["posterior chain", "hinge"],
+};
+
 function scoreExercise(
   exercise: Exercise,
   targetMuscles: MuscleGroup[],
   goal: FitnessGoal,
   experience: ExperienceLevel,
   priorityMuscles: MuscleGroup[],
-  deprioritMuscles: MuscleGroup[]
+  deprioritMuscles: MuscleGroup[],
+  targetTags?: string[]
 ): number {
   let score = 0;
 
@@ -269,6 +280,22 @@ function scoreExercise(
   ).length;
   score += secondaryOverlap * 10;
 
+  // Priority muscle secondary boost
+  const prioritySecondaryOverlap = exercise.secondaryMuscles.filter((m) =>
+    priorityMuscles.includes(m)
+  ).length;
+  score += prioritySecondaryOverlap * 15;
+
+  // Tag-based targeting — boosts exercises matching specific sub-muscle focus
+  if (targetTags && targetTags.length > 0) {
+    const exerciseTags = exercise.tags.map((t) => t.toLowerCase());
+    const tagMatches = targetTags.filter((tag) => {
+      const synonyms = TAG_BOOSTERS[tag] ?? [tag];
+      return synonyms.some((s) => exerciseTags.includes(s));
+    }).length;
+    score += tagMatches * 25;
+  }
+
   // Difficulty match
   if (exercise.difficulty === experience) score += 20;
   if (experience === "beginner" && exercise.difficulty === "intermediate") score -= 15;
@@ -279,6 +306,11 @@ function scoreExercise(
   if (exercise.category === "compound") {
     if (goal === "gain_strength" || goal === "build_muscle") score += 15;
     if (goal === "athletic_performance") score += 20;
+  }
+
+  // For fat loss, prefer exercises with more muscle group involvement
+  if (goal === "lose_fat") {
+    score += exercise.secondaryMuscles.length * 3;
   }
 
   return score;
@@ -292,7 +324,8 @@ function selectExercises(
   experience: ExperienceLevel,
   priorityMuscles: MuscleGroup[],
   deprioritMuscles: MuscleGroup[],
-  alreadySelected: Set<string>
+  alreadySelected: Set<string>,
+  targetTags?: string[]
 ): Exercise[] {
   const scored = availableExercises
     .filter((e) => !alreadySelected.has(e.id))
@@ -302,7 +335,7 @@ function selectExercises(
     )
     .map((e) => ({
       exercise: e,
-      score: scoreExercise(e, targetMuscles, goal, experience, priorityMuscles, deprioritMuscles),
+      score: scoreExercise(e, targetMuscles, goal, experience, priorityMuscles, deprioritMuscles, targetTags),
     }))
     .sort((a, b) => b.score - a.score);
 
@@ -339,7 +372,8 @@ function buildWorkoutDay(
   experience: ExperienceLevel,
   durationMinutes: number,
   priorityMuscles: MuscleGroup[],
-  deprioritMuscles: MuscleGroup[]
+  deprioritMuscles: MuscleGroup[],
+  targetTags?: string[]
 ): WorkoutDay {
   const counts = getExerciseCounts(durationMinutes);
   const alreadySelected = new Set<string>();
@@ -356,7 +390,8 @@ function buildWorkoutDay(
     experience,
     priorityMuscles,
     deprioritMuscles,
-    alreadySelected
+    alreadySelected,
+    targetTags
   );
 
   // Main: compound movements
@@ -369,7 +404,8 @@ function buildWorkoutDay(
     experience,
     priorityMuscles,
     deprioritMuscles,
-    alreadySelected
+    alreadySelected,
+    targetTags
   );
 
   // Accessory: mix of compound and isolation
@@ -381,7 +417,8 @@ function buildWorkoutDay(
     experience,
     priorityMuscles,
     deprioritMuscles,
-    alreadySelected
+    alreadySelected,
+    targetTags
   );
 
   // Finisher: core or high-rep isolation
@@ -398,7 +435,8 @@ function buildWorkoutDay(
           experience,
           priorityMuscles,
           deprioritMuscles,
-          alreadySelected
+          alreadySelected,
+          targetTags
         )
       : [];
 
@@ -484,6 +522,16 @@ export function generateProgram(profile: Partial<UserProfile>): GeneratedProgram
   const priorityMuscles: MuscleGroup[] = (profile.priority_muscles as MuscleGroup[]) ?? [];
   const deprioritMuscles: MuscleGroup[] = (profile.depriority_muscles as MuscleGroup[]) ?? [];
 
+  // Derive target tags from priority muscles for sub-muscle targeting
+  const targetTags: string[] = priorityMuscles.flatMap((m) => {
+    const boosts: Record<string, string[]> = {
+      glutes: ["glute-dominant", "posterior chain"],
+      hamstrings: ["hamstring-dominant", "posterior chain"],
+      quads: ["quad-dominant"],
+    };
+    return boosts[m] ?? [];
+  });
+
   // Filter exercises by equipment
   let availableExercises = filterExercisesByEquipment(EXERCISES, equipment);
 
@@ -505,7 +553,8 @@ export function generateProgram(profile: Partial<UserProfile>): GeneratedProgram
       experience,
       duration,
       priorityMuscles,
-      deprioritMuscles
+      deprioritMuscles,
+      targetTags
     )
   );
 

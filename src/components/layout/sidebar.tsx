@@ -5,6 +5,7 @@ import { LayoutDashboard, Zap, Dumbbell, BarChart3, User, LogOut } from "lucide-
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -17,9 +18,9 @@ const navItems = [
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const supabase = createClient();
 
   async function handleLogout() {
+    const supabase = createClient();
     await supabase.auth.signOut();
     toast.success("Signed out");
     router.push("/");
@@ -27,7 +28,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="hidden lg:flex flex-col w-60 border-r border-border bg-sidebar min-h-screen shrink-0">
+    <aside className="hidden lg:flex flex-col w-60 border-r border-border bg-sidebar h-full shrink-0 sticky top-0">
       <div className="p-6 border-b border-sidebar-border">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
@@ -58,7 +59,8 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="p-4 border-t border-sidebar-border">
+      <div className="p-4 border-t border-sidebar-border space-y-1">
+        <ThemeToggle />
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent w-full transition-colors"

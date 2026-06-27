@@ -22,7 +22,7 @@ interface OnboardingData {
   height_cm: string;
   weight_kg: string;
   experience_level: ExperienceLevel | "";
-  fitness_goal: FitnessGoal | "";
+  fitness_goals: FitnessGoal[];
   available_days: number;
   workout_duration: number;
   equipment: UserEquipment | "";
@@ -74,7 +74,7 @@ export default function OnboardingPage() {
     height_cm: "",
     weight_kg: "",
     experience_level: "",
-    fitness_goal: "",
+    fitness_goals: [],
     available_days: 3,
     workout_duration: 60,
     equipment: "",
@@ -99,9 +99,19 @@ export default function OnboardingPage() {
     });
   }
 
+  function toggleGoal(goal: FitnessGoal) {
+    setData((prev) => {
+      const current = prev.fitness_goals;
+      const next = current.includes(goal)
+        ? current.filter((g) => g !== goal)
+        : [...current, goal];
+      return { ...prev, fitness_goals: next };
+    });
+  }
+
   function canProceed(): boolean {
     switch (step) {
-      case 1: return !!data.experience_level && !!data.fitness_goal;
+      case 1: return !!data.experience_level && data.fitness_goals.length > 0;
       case 2: return !!data.equipment;
       case 3: return data.available_days > 0;
       case 4: return true;
@@ -117,13 +127,15 @@ export default function OnboardingPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      const primaryGoal = data.fitness_goals[0] ?? null;
       const profileData = {
         age: data.age ? parseInt(data.age) : null,
         gender: data.gender || null,
         height_cm: data.height_cm ? parseFloat(data.height_cm) : null,
         weight_kg: data.weight_kg ? parseFloat(data.weight_kg) : null,
         experience_level: data.experience_level || null,
-        fitness_goal: data.fitness_goal || null,
+        fitness_goal: primaryGoal,
+        fitness_goals: data.fitness_goals,
         available_days: data.available_days,
         workout_duration: data.workout_duration,
         equipment: data.equipment || null,
@@ -210,24 +222,36 @@ export default function OnboardingPage() {
             </div>
 
             <div className="space-y-3">
-              <Label className="text-base font-semibold">Primary Fitness Goal</Label>
+              <div>
+                <Label className="text-base font-semibold">Fitness Goals</Label>
+                <p className="text-sm text-muted-foreground mt-0.5">Select all that apply — your first pick is primary</p>
+              </div>
               <div className="grid sm:grid-cols-2 gap-2">
-                {GOALS.map((goal) => (
-                  <button
-                    key={goal.value}
-                    onClick={() => update("fitness_goal", goal.value)}
-                    className={cn(
-                      "text-left rounded-xl border p-4 transition-colors",
-                      data.fitness_goal === goal.value
-                        ? "border-primary bg-primary/10"
-                        : "border-border hover:border-muted-foreground"
-                    )}
-                  >
-                    <div className="text-xl mb-1">{goal.emoji}</div>
-                    <div className="font-medium">{goal.label}</div>
-                    <div className="text-xs text-muted-foreground mt-0.5">{goal.description}</div>
-                  </button>
-                ))}
+                {GOALS.map((goal) => {
+                  const selected = data.fitness_goals.includes(goal.value);
+                  const isPrimary = data.fitness_goals[0] === goal.value;
+                  return (
+                    <button
+                      key={goal.value}
+                      onClick={() => toggleGoal(goal.value)}
+                      className={cn(
+                        "text-left rounded-xl border p-4 transition-colors relative",
+                        selected
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:border-muted-foreground"
+                      )}
+                    >
+                      {isPrimary && (
+                        <span className="absolute top-2 right-2 text-[10px] font-bold uppercase tracking-wider text-primary bg-primary/10 px-1.5 py-0.5 rounded-full">
+                          Primary
+                        </span>
+                      )}
+                      <div className="text-xl mb-1">{goal.emoji}</div>
+                      <div className="font-medium">{goal.label}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{goal.description}</div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -453,9 +477,9 @@ export default function OnboardingPage() {
                     <strong>
                       {data.available_days}-day program
                     </strong>{" "}
-                    based on your{" "}
+                    optimized for{" "}
                     <strong>
-                      {GOALS.find((g) => g.value === data.fitness_goal)?.label ?? "goal"}
+                      {data.fitness_goals.map((g) => GOALS.find((x) => x.value === g)?.label).filter(Boolean).join(" + ") || "your goals"}
                     </strong>{" "}
                     with{" "}
                     <strong>

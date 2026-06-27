@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/layout/sidebar";
-import { BottomNav } from "@/components/layout/bottom-nav";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -9,7 +8,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   if (!user) redirect("/login");
 
-  // Check if onboarding is complete
   const { data: profile } = await supabase
     .from("profiles")
     .select("onboarding_completed")
@@ -21,12 +19,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden">
       <Sidebar />
-      <main className="flex-1 min-w-0 pb-20 lg:pb-0">
+      <main className="flex-1 min-w-0 overflow-y-auto">
         {children}
       </main>
-      <BottomNav />
     </div>
   );
 }

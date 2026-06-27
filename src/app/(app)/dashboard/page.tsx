@@ -18,6 +18,7 @@ import {
   Clock,
   Info,
 } from "lucide-react";
+import { ScheduleEditor } from "@/components/schedule-editor";
 
 export const dynamic = "force-dynamic";
 
@@ -47,11 +48,13 @@ export default async function DashboardPage() {
   const greeting = getGreeting();
   const firstName = profile?.full_name?.split(" ")[0] ?? "there";
   const today = new Date();
-  const dayOfWeek = today.getDay(); // 0 = Sunday
+  // getDay() is 0=Sun … 6=Sat; convert to Mon-based: Mon=0 … Sun=6
+  const mondayBased = (today.getDay() + 6) % 7;
 
   // Determine today's workout from program
   const workoutDays: WorkoutDay[] = program?.workout_days ?? [];
-  const todayWorkout = workoutDays[dayOfWeek % workoutDays.length] ?? workoutDays[0];
+  const todayIndex = workoutDays.length > 0 ? mondayBased % workoutDays.length : 0;
+  const todayWorkout = workoutDays[todayIndex] ?? workoutDays[0];
 
   // Calculate streak
   const streak = calculateStreak(logs ?? []);
@@ -223,31 +226,13 @@ export default async function DashboardPage() {
         </Card>
       )}
 
-      {/* Weekly Schedule Preview */}
-      {workoutDays.length > 0 && (
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Weekly Schedule</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {workoutDays.map((day, index) => (
-                <div key={day.id} className="flex items-center gap-3 text-sm">
-                  <span className="text-muted-foreground w-24 shrink-0">{day.dayLabel}</span>
-                  <Badge
-                    variant={index === dayOfWeek % workoutDays.length ? "default" : "secondary"}
-                    className="capitalize"
-                  >
-                    {day.name}
-                  </Badge>
-                  <span className="text-muted-foreground text-xs ml-auto">
-                    ~{day.estimatedDuration} min
-                  </span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      {/* Weekly Schedule — editable */}
+      {workoutDays.length > 0 && program?.id && (
+        <ScheduleEditor
+          workoutDays={workoutDays}
+          programId={program.id}
+          todayIndex={todayIndex}
+        />
       )}
     </div>
   );

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
@@ -17,15 +18,20 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  themeColor: "#09090b",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#faf9f6" },
+    { media: "(prefers-color-scheme: dark)", color: "#0d1017" },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
       <body className={`${geist.variable} ${geistMono.variable} font-sans antialiased`}>
-        {children}
-        <Toaster theme="dark" position="top-center" richColors />
+        <ThemeProvider>
+          {children}
+          <Toaster position="top-center" richColors />
+        </ThemeProvider>
       </body>
     </html>
   );

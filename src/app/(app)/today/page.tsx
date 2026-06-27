@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import type { WorkoutDay, WorkoutExercise, UserEquipment } from "@/types/database";
+import type { WorkoutDay, WorkoutExercise, UserEquipment, DifficultyRating } from "@/types/database";
 import {
   CheckCircle2,
   Circle,
@@ -22,6 +22,10 @@ import {
   Trophy,
   Clock,
   Dumbbell,
+  ThumbsUp,
+  ThumbsDown,
+  Minus,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -36,8 +40,44 @@ interface ExerciseState {
   expanded: boolean;
 }
 
+const DIFFICULTY_OPTIONS: Array<{
+  value: DifficultyRating;
+  label: string;
+  icon: React.ReactNode;
+  color: string;
+  description: string;
+}> = [
+  {
+    value: "too_easy",
+    label: "Too Easy",
+    icon: <ThumbsUp className="w-4 h-4" />,
+    color: "text-emerald-500 border-emerald-500/40 bg-emerald-500/10",
+    description: "Could do more reps/sets",
+  },
+  {
+    value: "just_right",
+    label: "Just Right",
+    icon: <Minus className="w-4 h-4" />,
+    color: "text-primary border-primary/40 bg-primary/10",
+    description: "Challenging but completed",
+  },
+  {
+    value: "struggled",
+    label: "Struggled",
+    icon: <AlertCircle className="w-4 h-4" />,
+    color: "text-amber-500 border-amber-500/40 bg-amber-500/10",
+    description: "Finished but very hard",
+  },
+  {
+    value: "couldnt_complete",
+    label: "Couldn't Complete",
+    icon: <ThumbsDown className="w-4 h-4" />,
+    color: "text-destructive border-destructive/40 bg-destructive/10",
+    description: "Didn't finish all sets/reps",
+  },
+];
+
 export default function TodayPage() {
-  const supabase = createClient();
   const router = useRouter();
   const [workout, setWorkout] = useState<WorkoutDay | null>(null);
   const [equipment, setEquipment] = useState<UserEquipment>("full_gym");
@@ -45,13 +85,17 @@ export default function TodayPage() {
   const [saving, setSaving] = useState(false);
   const [startTime] = useState(Date.now());
   const [alternativeFor, setAlternativeFor] = useState<WorkoutExercise | null>(null);
-  const [workoutDays, setWorkoutDays] = useState<WorkoutDay[]>([]);
+
+  // Feedback step
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackRatings, setFeedbackRatings] = useState<Record<string, DifficultyRating>>({});
+  const [feedbackNotes, setFeedbackNotes] = useState<Record<string, string>>({});
 
   const loadWorkout = useCallback(async () => {
+    const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Check for a quick workout from "Just Tell Me" feature
     const isQuick = new URLSearchParams(window.location.search).get("quick") === "1";
     const quickJson = isQuick ? sessionStorage.getItem("quickWorkout") : null;
 
@@ -91,12 +135,10 @@ export default function TodayPage() {
     if (profile?.equipment) setEquipment(profile.equipment as UserEquipment);
     if (program?.workout_days) {
       const days: WorkoutDay[] = program.workout_days;
-      setWorkoutDays(days);
-      const dayOfWeek = new Date().getDay();
-      const todayWorkout = days[dayOfWeek % days.length] ?? days[0];
+      const mondayBased = (new Date().getDay() + 6) % 7;
+      const todayWorkout = days[mondayBased % days.length] ?? days[0];
       setWorkout(todayWorkout);
 
-      // Initialize exercise state
       const initialState: Record<string, ExerciseState> = {};
       todayWorkout.exercises.forEach((ex) => {
         initialState[ex.exerciseId] = {
@@ -106,7 +148,7 @@ export default function TodayPage() {
       });
       setExerciseState(initialState);
     }
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     loadWorkout();
@@ -148,8 +190,6 @@ export default function TodayPage() {
       ),
     };
     setWorkout(updated);
-
-    // Initialize state for new exercise
     const ex = updated.exercises.find((e) => e.exerciseId === newId);
     if (ex) {
       setExerciseState((prev) => ({
@@ -164,10 +204,16 @@ export default function TodayPage() {
     toast.success("Exercise swapped!");
   }
 
-  async function finishWorkout() {
+  function handleFinishClick() {
+    // Go to feedback step first
+    setShowFeedback(true);
+  }
+
+  async function submitWorkoutWithFeedback() {
     if (!workout) return;
     setSaving(true);
     try {
+      const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
@@ -179,6 +225,8 @@ export default function TodayPage() {
           weight: parseFloat(s.weight) || 0,
           completed: s.completed,
         })),
+        difficultyRating: feedbackRatings[ex.exerciseId] ?? null,
+        actualNote: feedbackNotes[ex.exerciseId] ?? null,
       }));
 
       await supabase.from("workout_logs").insert({
@@ -192,7 +240,7 @@ export default function TodayPage() {
 
       toast.success("Workout logged! Great work! 💪");
       router.push("/dashboard");
-    } catch (err) {
+    } catch {
       toast.error("Failed to save workout");
     } finally {
       setSaving(false);
@@ -220,6 +268,125 @@ export default function TodayPage() {
     }))
     .filter((g) => g.exercises.length > 0);
 
+  // ── FEEDBACK SCREEN ────────────────────────────────────────────────────────
+  if (showFeedback) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
+        <div>
+          <h1 className="text-xl font-bold">How did it go?</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Rate each exercise so your next workout can be adjusted.
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          {workout.exercises
+            .filter((ex) => ex.section !== "warmup")
+            .map((ex) => {
+              const exercise = getExerciseById(ex.exerciseId);
+              if (!exercise) return null;
+              const selected = feedbackRatings[ex.exerciseId];
+              const couldntComplete = selected === "couldnt_complete";
+
+              return (
+                <Card key={ex.exerciseId}>
+                  <CardHeader className="pb-2 pt-4 px-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-sm">{exercise.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {ex.sets} × {ex.repsMin}–{ex.repsMax} reps
+                          {ex.progressionNote && (
+                            <span className="ml-2 text-primary">· {ex.progressionNote}</span>
+                          )}
+                        </p>
+                      </div>
+                      <Badge variant="secondary" className="text-xs capitalize">
+                        {exercise.primaryMuscle}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4 space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      {DIFFICULTY_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={() =>
+                            setFeedbackRatings((prev) => ({
+                              ...prev,
+                              [ex.exerciseId]: opt.value,
+                            }))
+                          }
+                          className={cn(
+                            "flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium transition-colors",
+                            selected === opt.value
+                              ? opt.color
+                              : "border-border text-muted-foreground hover:border-primary/50"
+                          )}
+                        >
+                          {opt.icon}
+                          <span>{opt.label}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {couldntComplete && (
+                      <div className="space-y-1.5">
+                        <p className="text-xs text-muted-foreground">
+                          What could you actually do? (optional — helps us adjust your plan)
+                        </p>
+                        <Input
+                          placeholder={`e.g., "only 15s of 30s plank", "3 sets instead of 5"`}
+                          value={feedbackNotes[ex.exerciseId] ?? ""}
+                          onChange={(e) =>
+                            setFeedbackNotes((prev) => ({
+                              ...prev,
+                              [ex.exerciseId]: e.target.value,
+                            }))
+                          }
+                          className="text-xs h-8"
+                        />
+                        <p className="text-xs text-primary">
+                          We&apos;ll build a progression plan to get you to the full target.
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+        </div>
+
+        <div className="flex gap-3 pt-2">
+          <Button variant="outline" className="flex-1" onClick={() => setShowFeedback(false)}>
+            Back
+          </Button>
+          <Button
+            className="flex-1"
+            onClick={submitWorkoutWithFeedback}
+            disabled={saving}
+          >
+            {saving ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Trophy className="w-4 h-4" />
+            )}
+            {saving ? "Saving..." : "Save Workout"}
+          </Button>
+        </div>
+
+        <button
+          onClick={submitWorkoutWithFeedback}
+          className="w-full text-xs text-muted-foreground hover:text-foreground text-center"
+          disabled={saving}
+        >
+          Skip feedback and save
+        </button>
+      </div>
+    );
+  }
+
+  // ── WORKOUT SCREEN ─────────────────────────────────────────────────────────
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
       {/* Header */}
@@ -297,10 +464,15 @@ export default function TodayPage() {
                         </button>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 ml-6 mt-1">
+                    <div className="flex items-center gap-2 ml-6 mt-1 flex-wrap">
                       <Badge variant="secondary" className="text-xs capitalize">
                         {exercise.primaryMuscle}
                       </Badge>
+                      {exercise.tags.slice(0, 2).filter(t => !["compound", "isolation"].includes(t) && t !== exercise.primaryMuscle).map((tag) => (
+                        <Badge key={tag} variant="outline" className="text-xs capitalize">
+                          {tag}
+                        </Badge>
+                      ))}
                       <span className="text-xs text-muted-foreground">
                         {ex.sets} × {ex.repsMin}–{ex.repsMax} reps
                       </span>
@@ -310,6 +482,9 @@ export default function TodayPage() {
                         </span>
                       )}
                     </div>
+                    {ex.progressionNote && (
+                      <p className="ml-6 text-xs text-primary mt-1">{ex.progressionNote}</p>
+                    )}
                   </CardHeader>
 
                   {state?.expanded && (
@@ -351,10 +526,8 @@ export default function TodayPage() {
                         ))}
                       </div>
 
-                      {/* Tips */}
                       <p className="text-xs text-muted-foreground italic">{exercise.tips}</p>
 
-                      {/* Swap button */}
                       <button
                         onClick={() => setAlternativeFor(ex)}
                         className="flex items-center gap-1.5 text-xs text-primary hover:underline"
@@ -375,16 +548,12 @@ export default function TodayPage() {
       <Button
         className="w-full"
         size="lg"
-        onClick={finishWorkout}
+        onClick={handleFinishClick}
         disabled={saving}
         variant={progressPct === 100 ? "success" : "default"}
       >
-        {saving ? (
-          <Loader2 className="w-4 h-4 animate-spin" />
-        ) : progressPct === 100 ? (
-          <Trophy className="w-4 h-4" />
-        ) : null}
-        {saving ? "Saving..." : progressPct === 100 ? "Complete Workout!" : "Finish & Log Workout"}
+        {progressPct === 100 ? <Trophy className="w-4 h-4" /> : null}
+        {progressPct === 100 ? "Complete Workout!" : "Finish & Log Workout"}
       </Button>
 
       {/* Alternatives Dialog */}
@@ -406,8 +575,13 @@ export default function TodayPage() {
                   className="w-full text-left rounded-xl border border-border hover:border-primary p-3 transition-colors"
                 >
                   <div className="font-medium text-sm">{alt.name}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    {alt.primaryMuscle} · {alt.difficulty} · {alt.equipment.join(", ")}
+                  <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-1">
+                    <span className="capitalize">{alt.primaryMuscle}</span>
+                    {alt.tags.slice(0, 3).filter(t => t !== alt.primaryMuscle).map(tag => (
+                      <span key={tag} className="text-primary/70">· {tag}</span>
+                    ))}
+                    <span>· {alt.difficulty}</span>
+                    <span>· {alt.equipment.join(", ")}</span>
                   </div>
                 </button>
               ))}

@@ -57,6 +57,8 @@ export type SplitType =
 
 export type WorkoutSection = "warmup" | "main" | "accessory" | "finisher";
 
+export type DifficultyRating = "too_easy" | "just_right" | "struggled" | "couldnt_complete";
+
 export interface UserProfile {
   id: string;
   full_name: string | null;
@@ -66,6 +68,7 @@ export interface UserProfile {
   weight_kg: number | null;
   experience_level: ExperienceLevel | null;
   fitness_goal: FitnessGoal | null;
+  fitness_goals: FitnessGoal[];
   available_days: number | null;
   workout_duration: number | null;
   equipment: UserEquipment | null;
@@ -85,6 +88,7 @@ export interface WorkoutExercise {
   repsMax: number;
   restSeconds: number;
   notes?: string;
+  progressionNote?: string;
   orderIndex: number;
 }
 
@@ -117,6 +121,8 @@ export interface ExerciseSet {
 export interface ExerciseLog {
   exerciseId: string;
   sets: ExerciseSet[];
+  difficultyRating?: DifficultyRating;
+  actualNote?: string;
 }
 
 export interface WorkoutLog {
